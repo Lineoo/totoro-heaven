@@ -12,11 +12,11 @@ export default defineEventHandler((event) => {
   assertLocalRequest(event)
 
   /**
-   * 🚧 平台闸门（2026-10-18，Linux 迁移）：内存扫描器是 Win32 P/Invoke + `WeChatAppEx.exe`，
-   * 非 Windows 上**直接返回可读原因**，不创建扫描状态、不启动子进程。
-   * 前端 `doTokenScan` 对 `ok:false` 会立刻进入 error 并提示抓包路线，不会白等 70 秒。
+   * 🚧 平台闸门（2026-10-18）：Windows 走 PowerShell，Linux 走 `/proc/<pid>/mem`。
+   * 其它平台（macOS 等）没有扫描实现，直接返回可读原因，不创建扫描状态。
+   * 前端 `doTokenScan` 对 `ok:false` 会立刻进入 error 并提示抓包路线。
    */
-  if (process.platform !== 'win32') {
+  if (process.platform !== 'win32' && process.platform !== 'linux') {
     logWarn('token', '当前平台不支持一键获取 token', { platform: process.platform, arch: process.arch })
     return { ok: false, message: TOKEN_SCAN_UNSUPPORTED_MESSAGE }
   }
@@ -37,6 +37,9 @@ export default defineEventHandler((event) => {
   return {
     ok: true,
     nonce: st.nonce,
-    message: '已开始扫描；请确保电脑版微信已打开并登录「龙猫体育锻炼」',
+    message:
+      process.platform === 'linux'
+        ? '已开始扫描；请确保微信已打开并登录「龙猫体育锻炼」，并保持小程序窗口开着'
+        : '已开始扫描；请确保电脑版微信已打开并登录「龙猫体育锻炼」',
   }
 })

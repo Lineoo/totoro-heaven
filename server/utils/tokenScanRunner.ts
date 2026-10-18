@@ -1,7 +1,11 @@
 /**
- * 启动「内存扫描器」（PowerShell + Add-Type P/Invoke，源码内嵌见 `tokenScanScript.ts`）
+ * 启动「内存扫描器」
  *
- * 为什么这样起：
+ * 平台分支：
+ *   - Windows：PowerShell + Add-Type P/Invoke，源码内嵌见 `tokenScanScript.ts`；
+ *   - Linux：Node 直接只读 `/proc/<pid>/mem`，见 `tokenScanLinux.ts`。
+ *
+ * Windows 为什么这样起：
  *   - 发布物是 **Node SEA 单文件 EXE**，外部 .ps1 不会被打进去 → 运行时把内嵌源码写到临时目录再执行；
  *   - **纯 ASCII 写入、无 BOM**（本机 PS 5.1 读无 BOM 非 ASCII 会按 ANSI 误解码，见 ERROR.md E14）；
  *   - `windowsHide` 不弹窗；结果通过它 POST 回本地端点，不靠解析 stdout。
@@ -21,6 +25,7 @@ import { join } from 'node:path'
 import { redactFreeText } from '../../utils/mp/logFormat'
 import { logInfo, logWarn } from './logger'
 import { TOKEN_SCAN_PS1, tokenScannerArgs } from './tokenScanScript'
+import { runLinuxTokenScan } from './tokenScanLinux'
 import { getScan, patchScan } from './tokenScanState'
 
 /** 扫描器落点目录（固定名，便于排错；脚本与诊断日志都在这儿，用户可整目录发回来） */
@@ -144,7 +149,7 @@ function writeScannerLog(code: number | null, output: string): string {
  * 口径：只说“当前平台不支持 + 可替代路线”，不假装扫描器还能工作。
  */
 export const TOKEN_SCAN_UNSUPPORTED_MESSAGE =
-  '「一键获取 token」目前只支持 Windows（需要只读扫描 PC 微信的 WeChatAppEx.exe 进程内存）。' +
+  '「一键获取 token」目前支持 Windows 与 Linux（只读扫描微信小程序进程内存）。' +
   '当前平台请改用「抓包粘贴 token」：用 mitmproxy/Charles 抓一条 wxxcx.xtotoro.com 请求，' +
   '把 Authorization: Bearer … 粘到输入框。'
 
@@ -154,13 +159,24 @@ export const TOKEN_SCAN_UNSUPPORTED_MESSAGE =
  */
 export function launchTokenScanner(endpoint: string, nonce: string): void {
   /**
-   * 🔒 平台闸门（2026-10-18，Linux 迁移）：内存扫描器是 **Win32 P/Invoke**
-   * （`kernel32.dll` 的 `OpenProcess` / `ReadProcessMemory` / `VirtualQueryEx`）
-   * 且只认 PC 微信小程序宿主 `WeChatAppEx.exe`。
+   * Linux（2026-10-18 实测）：微信 4.x AppImage 里的 WMPF 运行时也是 `WeChatAppEx`，
+   * 内存里能找到 `WXXCX` 候选。实现放在 `tokenScanLinux.ts`：
+   * 只读 `/proc/<pid>/mem`，不写内存/不注入；结果仍 POST 回 token-import 验活。
    *
-   * Linux/macOS 上**不要**尝试启动（即使装了 `pwsh` 也必然失败），否则用户会看到
-   * “扫描器未回传结果”这种像 bug 的文案。这里直接把状态推进到 `error` 并说明可替代路线，
-   * 让「一键获取 token」成为**可预期的不可用**，而不是把后端拖进一次无意义的子进程。
+   * ⚠️ 与 Windows 不同：Linux 受 ptrace/Yama 限制，默认 `ptrace_scope=1` 会 EACCES；
+   * 由 `tokenScanLinux` 返回 `NO_PERMISSION`，界面再给用户命令，不在这里自动提权。
+   */
+  if (process.platform === 'linux') {
+    logInfo('token-scan', 'Linux 内存扫描器已启动', {
+      endpoint: endpoint.replace(/\/api\/local\/.*$/, ''),
+    })
+    void runLinuxTokenScan(endpoint, nonce)
+    return
+  }
+
+  /**
+   * 🔒 其它平台闸门：Windows 走 PowerShell；macOS 等没有 `/proc` 扫描实现。
+   * 不假装能工作，直接把状态推进到 `error` 并说明可替代路线。
    */
   if (process.platform !== 'win32') {
     const logPath = writeScannerLog(null, `unsupported platform: ${process.platform} (${process.arch})`)

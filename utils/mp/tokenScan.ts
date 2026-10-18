@@ -1,13 +1,14 @@
 /**
  * 「一键获取 token」的纯逻辑（零依赖，有单测）
  *
- * 背景：token 以明文存在于 PC 微信小程序宿主进程 `WeChatAppEx.exe` 的内存里
- * （小程序本地存储是真加密，但内存不是）。本地脚本用标准 Win32 调试 API 只读扫描内存，
- * 找出形如 `WXXCX` + base64 的候选串，回传到本地端点，再由服务端**逐个验活**。
+ * 背景：token 以明文存在于微信小程序宿主进程的内存里（小程序本地存储是真加密，但内存不是）。
+ * Windows 宿主是 `WeChatAppEx.exe`；Linux 微信 4.x 是 `RadiumWMPF/runtime/WeChatAppEx`。
+ * 扫描器只读内存，找出形如 `WXXCX` + base64 的候选串，回传到本地端点，再由服务端**逐个验活**。
  *
  * 本模块只负责"候选的清洗与掩码"这类**纯计算**（可单测，且**不依赖 node 内建**，
  * 以便前端也能安全引用）；真正的内存扫描在 `server/utils/tokenScanScript.ts`
- * （PowerShell + Add-Type P/Invoke），指纹计算在服务端端点里（用 node:crypto）。
+ * （Windows：PowerShell + Add-Type P/Invoke）与 `server/utils/tokenScanLinux.ts`
+ * （Linux：`/proc/<pid>/mem`），指纹计算在服务端端点里（用 node:crypto）。
  *
  * ⚠️ 纪律：token 本体**不打印、不入库**；日志与界面只出现**指纹**（长度 + sha256 前 12 位）。
  */

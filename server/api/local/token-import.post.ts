@@ -50,6 +50,11 @@ export default defineEventHandler(async (event) => {
     phase?: string
     detail?: string
     psVersion?: string
+    /** 🆕 Linux 扫描器：平台 / 读取字节数 / 实际扫过的 pid（排障用，不含 token） */
+    platform?: string
+    bytesRead?: number
+    scannedPids?: number[]
+    elapsedMs?: number
   }
 
   const st = getScan()
@@ -69,21 +74,34 @@ export default defineEventHandler(async (event) => {
      * （同样无依据，本机实测也否掉了）。现在改成：**脚本自己说什么就转什么**。
      */
     const detail = typeof body?.detail === 'string' ? body.detail.trim().slice(0, 400) : ''
+    const platform = typeof body?.platform === 'string' ? body.platform : ''
     const hint =
-      body?.error === 'SCRIPT_FAILED'
-        ? `扫描脚本自己报错了（死在「${body?.phase || '未知'}」这一步）：${detail || '（脚本没给出细节）'}`
-        : body?.error === 'NO_PROCESS'
-        ? '未找到微信小程序进程：请先用「电脑版微信」打开并登录「龙猫体育锻炼」，保持小程序窗口开着，再点一次「一键获取 token」'
-        : body?.error === 'NO_TOKEN'
-          ? '进程里没找到 token：请在小程序里点开任意页面（触发一次请求）后重试；「务必保持小程序窗口开着」（关掉后内存里就没有新 token 了）'
-          : '扫描器没有回传可用候选（可能被杀软拦截或微信版本不兼容）——可改用 Fiddler 抓包粘贴 token'
+      body?.error === 'NO_PERMISSION'
+        ? '无法读取微信进程内存（Linux 权限不足）。请先在终端临时执行：\n' +
+          '    sudo sysctl kernel.yama.ptrace_scope=0\n' +
+          '再点一次「一键获取 token」；扫描完成后恢复：\n' +
+          '    sudo sysctl kernel.yama.ptrace_scope=1\n' +
+          '（如果已经是 0 仍失败，可能是 AppImage/沙箱限制；可改用抓包粘贴。）'
+        : body?.error === 'SCAN_FAILED'
+          ? `Linux 内存扫描失败：${detail || '（扫描器没有给出细节）'}`
+          : body?.error === 'SCRIPT_FAILED'
+            ? `扫描脚本自己报错了（死在「${body?.phase || '未知'}」这一步）：${detail || '（脚本没给出细节）'}`
+            : body?.error === 'NO_PROCESS'
+              ? '未找到微信小程序进程：请先打开微信并进入「龙猫体育锻炼」小程序，保持窗口开着，再点一次「一键获取 token」'
+              : body?.error === 'NO_TOKEN'
+                ? '进程里没找到 token：请在小程序里点开任意页面（触发一次请求）后重试；「务必保持小程序窗口开着」（关掉后内存里就没有新 token 了）。Linux 上如果刚启动微信，等小程序加载完再试。'
+                : '扫描器没有回传可用候选（可能被杀软拦截或微信版本不兼容）——可改用 Fiddler（Windows）或 mitmproxy / Charles（Linux/macOS）抓包粘贴 token'
     patchScan({ phase: 'error', message: hint })
     logWarn('token', '扫描未拿到候选', {
       scannerError: body?.error ?? '(无)',
+      platform: platform || '(unknown)',
       phase: body?.phase ?? '',
       detail: detail.slice(0, 200), // 值级脱敏由 logFormat 负责（形似 token 的片段会被掩掉）
       psVersion: body?.psVersion ?? '',
       processes: body?.processes,
+      bytesRead: body?.bytesRead,
+      scanned: Array.isArray(body?.scannedPids) ? body.scannedPids.length : 0,
+      elapsedMs: body?.elapsedMs,
     })
     return { ok: true, validated: 0 }
   }

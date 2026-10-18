@@ -53,7 +53,9 @@
           <span>{{ tokenScanState.message }}</span>
         </div>
         <div class="text-caption mt-1">
-          请确认：电脑版微信已打开并登录「龙猫体育锻炼」（扫描器只读它自己的进程内存，不需要管理员）。
+          请确认：微信已打开并登录「龙猫体育锻炼」，并保持小程序窗口开着。
+          扫描器只读微信自己的进程内存（Windows 扫 WeChatAppEx.exe；Linux 扫 WMPF 的 WeChatAppEx 进程）。
+          Linux 若提示权限不足，请按提示临时设置 <code>ptrace_scope=0</code>，扫描后恢复。
         </div>
       </v-alert>
       <v-alert v-else-if="tokenScanState.phase === 'ready'" type="success" variant="tonal" density="compact" class="mt-2">

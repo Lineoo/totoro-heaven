@@ -62,7 +62,7 @@ export function beginScan(): TokenScanState {
     nonce: newNonce(),
     createdAt: Date.now(),
     phase: 'scanning',
-    message: '正在扫描微信小程序进程内存…（约 1~3 秒）',
+    message: '正在扫描微信小程序进程内存…（Windows 约 1~3 秒；Linux 约 3~10 秒）',
     used: false,
   }
   return state

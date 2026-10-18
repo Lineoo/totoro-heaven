@@ -66,7 +66,7 @@
 
 | 能力 | 说明 |
 | --- | --- |
-| **一键获取 token** | 工作台点「**一键获取 token**」：自动扫描**电脑版微信**小程序进程内存取出 token（只读、不写内存、不注入、不需要管理员）→ 逐个验活 → 自动登录并读取真实数据，**全流程约 5 秒**，免去手工抓包 |
+| **一键获取 token** | 工作台点「**一键获取 token**」：只读扫描微信小程序宿主内存（Windows `WeChatAppEx.exe`；Linux `RadiumWMPF/runtime/WeChatAppEx`）取出 token（不写内存、不注入；Windows 不需要管理员，Linux 需 ptrace 权限）→ 逐个验活 → 自动登录并读取真实数据，通常几秒，免去手工抓包 |
 | **读取真实数据** | 用 token 读出：学生档案、**任务约束**（里程/拟合度阈值/速度与时长区间/生效时段）、**官方线路点列**、人脸与随机抽查开关、线路是否启用摄像头杆 |
 | **开跑前门禁（三合一）** | 开场人脸 / 随机抽查 / 摄像头杆三项**在创建场次之前**判定；任一开启（或状态未读取）即停止并说明原因，**不会在你的账号上留下无效记录** |
 | **线路按校区分组** | 任务下发的线路可能横跨多校区（实测南航 8 条分属 3 个地理簇，相距 10.8 km 与 90 km+），**且线路名称与坐标未必对应** → 按**坐标聚类**分组、本校区优先、跨校区标距离并给出警告 |
@@ -110,7 +110,7 @@
 npm install
 npm run dev            # http://localhost:3000
 npm run verify         # ★一键验证：单测 + 4 类类型检查 + 接线契约 + 检查器自测（改完代码先跑这个；CI 也会跑）
-npm run test:mp        # 635 个单测（Node 内置 test runner，零依赖）
+npm run test:mp        # 645 个单测（Node 内置 test runner，零依赖）
 npm run typecheck:mp   # 纯逻辑模块类型检查
 npm run typecheck:ui   # composables / src / utils / server 的 .ts 类型检查
 npm run typecheck:vue  # .vue 模板类型检查（nuxi typecheck）
@@ -124,7 +124,16 @@ npm run sea            # 打单文件 EXE（见 pack/sea/build-sea.ps1）
 ### 方式 C：Linux（源码运行）
 
 **核心功能可用**：读取真实账号/任务、生成轨迹、提交、日志与诊断导出都在 Node 里，和平台无关。
-**只有「一键获取 token」不支持**（它需要 Win32 API 读 PC 微信的 `WeChatAppEx.exe` 内存）；Linux 上请用抓包粘贴 token。
+**「一键获取 token」在 Linux 上也可用（实验性）**：只读扫描 WMPF 的 `WeChatAppEx` 进程内存，
+不需要 AppImage 挂载路径（用 `/proc/<pid>/comm` + `cmdline` 找进程）。
+⚠️ Linux 需要 ptrace 权限：默认 `kernel.yama.ptrace_scope=1` 会拒绝同用户非父子进程读内存。
+扫描前临时执行（完成后恢复）：
+```bash
+sudo sysctl kernel.yama.ptrace_scope=0
+# 点「一键获取 token」，等待扫描完成
+sudo sysctl kernel.yama.ptrace_scope=1
+```
+Flatpak / 强沙箱环境可能仍读不到；失败时用抓包粘贴。
 日志目录是 `os.tmpdir()/totoro-heaven-runtime/logs`（通常是 `/tmp/...`），可用 `TOTORO_LOG_DIR` 覆盖。
 
 ```bash
@@ -137,15 +146,16 @@ npm run build
 NITRO_HOST=127.0.0.1 NITRO_PORT=3000 node .output/server/index.mjs
 ```
 
-- token：用 mitmproxy / Charles 抓一条 `wxxcx.xtotoro.com` 请求，复制 `Authorization: Bearer …` 粘到工作台；
-  或先在 Windows 上取到 token，再粘到 Linux 的浏览器里。
+- token：优先点「一键获取 token」；失败再回到抓包：用 mitmproxy / Charles 抓一条 `wxxcx.xtotoro.com` 请求，
+  复制 `Authorization: Bearer …` 粘到工作台；或先在 Windows 上取到 token 再粘到 Linux 浏览器。
 - `npm run sea` 仍是 **Windows** 的单文件 EXE 打包脚本；Linux 目前没有官方单文件产物，直接跑源码即可。
-- 非核心功能已做降级：Linux 点「一键获取 token」会直接提示改用抓包；「打开日志文件夹」走 `xdg-open`，
-  命令不存在时只返回错误，不会把后端进程带崩。
+- 非核心功能已做降级：「打开日志文件夹」走 `xdg-open`，命令不存在时只返回错误，不会把后端进程带崩；
+  `ptrace_scope` 不足时 token 扫描会明确报 `NO_PERMISSION`，不会把后端拖死。
 - 如果 `npm ci` 报 `EALLOWREMOTE`（lockfile 里的 `resolved` 是远端 tarball，npm 12 默认不放行），
   用 `npm ci --allow-remote=all`，或改用 Node 22/24（自带 npm 10/11）。
 - 本次迁移验证范围：Linux 上 `npm run verify` 全绿、`npm run dev` 与 `npm run build` + `node .output/server/index.mjs` 可启动、
-  本机端点不会崩；**未用真实 token 在 Linux 上做一次真实提交实测**（提交链路本身不依赖平台）。
+  本机端点不会崩；**Linux「一键获取 token」已实测**（只读扫描 WMPF 内存，token 验活成功）。
+  **真实提交仍未在 Linux 上实测**（提交链路本身不依赖平台）。
 
 ---
 
@@ -153,11 +163,11 @@ NITRO_HOST=127.0.0.1 NITRO_PORT=3000 node .output/server/index.mjs
 
 **第一步：拿 token（两种方式，任选）**
 
-- **推荐：一键获取** —— 在**电脑版微信**里打开并登录「龙猫体育锻炼」，然后在工作台点「**一键获取 token**」：
-  工具会只读扫描小程序进程内存取出 token（**约 5 秒**），自动验活、自动登录并读取真实数据。
-  > 前提：**电脑版微信**（手机端没有该进程）；小程序需**已登录**且**保持开着**。
-- **手动兜底：抓包粘贴** —— 用 Fiddler 抓一次小程序请求（系统代理 + HTTPS 解密），
-  从任意一条 `wxxcx.xtotoro.com` 请求的 `Authorization: Bearer …` 里取出 token 粘到工作台。
+- **推荐：一键获取** —— 在微信（Windows 电脑版 / Linux 原生版）里打开并登录「龙猫体育锻炼」，
+  然后在工作台点「**一键获取 token**」：工具会只读扫描小程序进程内存取出 token，自动验活、自动登录并读取真实数据。
+  > 前提：小程序需**已登录**且**保持开着**；Linux 还需要 `kernel.yama.ptrace_scope=0`（见「方式 C」）。
+- **手动兜底：抓包粘贴** —— 用 Fiddler（Windows）或 mitmproxy / Charles（Linux/macOS）抓一次小程序请求
+  （系统代理 + HTTPS 解密），从任意一条 `wxxcx.xtotoro.com` 请求的 `Authorization: Bearer …` 里取出 token 粘到工作台。
    > ⚠️ **token 有效期只有几天**（实测：9-11 取的 token 到 9-14 已失效）→ 现抓现用。
    > ⚠️ 必须按 **host** 过滤（混杂抓包里按"最长"挑会挑到浏览器的 token）。
 
@@ -219,7 +229,7 @@ NITRO_HOST=127.0.0.1 NITRO_PORT=3000 node .output/server/index.mjs
 | 项 | 做法 |
 | --- | --- |
 | **token 存放** | 只存**本机** `localStorage`（`mp_session`）；不打印、不入库、不上传 |
-| **一键获取 token** | 只**只读**扫描**你自己**电脑上微信小程序进程的内存（`OpenProcess(PROCESS_VM_READ)`；**不写内存、不注入、不 hook、不需要管理员**）；扫描器与界面之间的结果只走**本机端点**（仅 loopback 可访问 + 一次性 nonce + 同源校验），token **不落盘、不打印**（只显示掩码与指纹） |
+| **一键获取 token** | **只读**扫描**你自己**电脑上微信小程序进程的内存（Windows：`OpenProcess(PROCESS_VM_READ)`；Linux：`/proc/<pid>/mem`；**不写内存、不注入、不 hook**；Windows 不需要管理员，Linux 需要 ptrace 权限）；扫描器与界面之间的结果只走**本机端点**（仅 loopback 可访问 + 一次性 nonce + 同源校验），token **不落盘、不打印**（只显示掩码与指纹） |
 | **凭据转发** | 本地代理仅转发到你**学校的域名**（白名单 + 强制 HTTPS）；绝不把 token 送到其他主机 |
 | **日志** | 事件日志与服务端文件日志**均只在本机**；token / 学号 / 姓名**一律脱敏**（掩码或只留长度），并有单测保证 |
 | **XSS** | 全项目**不使用 `v-html` / `innerHTML`**，所有动态内容走 Vue 文本插值（自动转义） |
