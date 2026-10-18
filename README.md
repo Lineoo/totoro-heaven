@@ -121,6 +121,32 @@ npm run sea            # 打单文件 EXE（见 pack/sea/build-sea.ps1）
 
 > 🤖 提交与 PR 会自动跑 `npm run verify`（见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)）。
 
+### 方式 C：Linux（源码运行）
+
+**核心功能可用**：读取真实账号/任务、生成轨迹、提交、日志与诊断导出都在 Node 里，和平台无关。
+**只有「一键获取 token」不支持**（它需要 Win32 API 读 PC 微信的 `WeChatAppEx.exe` 内存）；Linux 上请用抓包粘贴 token。
+日志目录是 `os.tmpdir()/totoro-heaven-runtime/logs`（通常是 `/tmp/...`），可用 `TOTORO_LOG_DIR` 覆盖。
+
+```bash
+# 建议 Node 22/24（CI 用 24）；本次迁移也在 Node 26.11.1 上跑通（会有 fs.Stats 弃用告警）
+npm ci
+npm run dev                         # http://127.0.0.1:3000
+
+# 生产模式（不需要 PowerShell）
+npm run build
+NITRO_HOST=127.0.0.1 NITRO_PORT=3000 node .output/server/index.mjs
+```
+
+- token：用 mitmproxy / Charles 抓一条 `wxxcx.xtotoro.com` 请求，复制 `Authorization: Bearer …` 粘到工作台；
+  或先在 Windows 上取到 token，再粘到 Linux 的浏览器里。
+- `npm run sea` 仍是 **Windows** 的单文件 EXE 打包脚本；Linux 目前没有官方单文件产物，直接跑源码即可。
+- 非核心功能已做降级：Linux 点「一键获取 token」会直接提示改用抓包；「打开日志文件夹」走 `xdg-open`，
+  命令不存在时只返回错误，不会把后端进程带崩。
+- 如果 `npm ci` 报 `EALLOWREMOTE`（lockfile 里的 `resolved` 是远端 tarball，npm 12 默认不放行），
+  用 `npm ci --allow-remote=all`，或改用 Node 22/24（自带 npm 10/11）。
+- 本次迁移验证范围：Linux 上 `npm run verify` 全绿、`npm run dev` 与 `npm run build` + `node .output/server/index.mjs` 可启动、
+  本机端点不会崩；**未用真实 token 在 Linux 上做一次真实提交实测**（提交链路本身不依赖平台）。
+
 ---
 
 ## 使用流程

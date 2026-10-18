@@ -62,8 +62,8 @@
       <v-alert v-else-if="tokenScanState.phase === 'error'" type="error" variant="tonal" density="compact" class="mt-2">
         {{ tokenScanState.message }}
         <div class="text-caption mt-1">
-          仍不行就回到「抓包粘贴」路线：Fiddler 抓一条 <code>wxxcx.xtotoro.com</code> 请求，把
-          <code>Authorization: Bearer …</code> 粘到上面的输入框。
+          仍不行就回到「抓包粘贴」路线：用 Fiddler（Windows）或 mitmproxy / Charles（Linux / macOS）
+          抓一条 <code>wxxcx.xtotoro.com</code> 请求，把 <code>Authorization: Bearer …</code> 粘到上面的输入框。
         </div>
       </v-alert>
 

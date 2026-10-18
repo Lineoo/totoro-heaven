@@ -5,11 +5,21 @@
  * 扫描器稍后会把候选 POST 到 `/api/local/token-import`（带同一个 nonce）。
  */
 import { assertLocalRequest, beginScan, localCallbackOrigin } from '../../../utils/tokenScanState'
-import { launchTokenScanner } from '../../../utils/tokenScanRunner'
-import { logInfo } from '../../../utils/logger'
+import { TOKEN_SCAN_UNSUPPORTED_MESSAGE, launchTokenScanner } from '../../../utils/tokenScanRunner'
+import { logInfo, logWarn } from '../../../utils/logger'
 
 export default defineEventHandler((event) => {
   assertLocalRequest(event)
+
+  /**
+   * 🚧 平台闸门（2026-10-18，Linux 迁移）：内存扫描器是 Win32 P/Invoke + `WeChatAppEx.exe`，
+   * 非 Windows 上**直接返回可读原因**，不创建扫描状态、不启动子进程。
+   * 前端 `doTokenScan` 对 `ok:false` 会立刻进入 error 并提示抓包路线，不会白等 70 秒。
+   */
+  if (process.platform !== 'win32') {
+    logWarn('token', '当前平台不支持一键获取 token', { platform: process.platform, arch: process.arch })
+    return { ok: false, message: TOKEN_SCAN_UNSUPPORTED_MESSAGE }
+  }
 
   /**
    * 回传地址**按请求实际来的地址族**拼（`localCallbackOrigin`，纯函数、有单测）——

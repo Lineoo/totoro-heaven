@@ -34,6 +34,26 @@ const numOrNull = (line) => {
   return Number.isInteger(v) && v > 0 && v < 65536 ? v : null
 }
 
+/**
+ * 打开浏览器。⚠️ 2026-10-18（Linux 迁移）：**不能再写死 Windows 的 `start`** ——
+ * Linux 上它只是 shell 的一句 "start: not found"，浏览器不会开；macOS 用 `open`，Linux 用 `xdg-open`。
+ * 这里只影响**打包版**的“启动后自动开浏览器”，源码 `npm run dev` 不走本文件。
+ */
+function openInBrowser(url) {
+  const cmd =
+    process.platform === 'win32'
+      ? `start "" "${url}"`
+      : process.platform === 'darwin'
+        ? `open "${url}"`
+        : `xdg-open "${url}"`
+  exec(cmd)
+}
+
+/** 出错后等用户按键：`pause` 只在 Windows 存在；其它平台没有它，直接退出即可 */
+function pauseIfWindows() {
+  if (process.platform === 'win32') exec('pause')
+}
+
 /** 该端口上是否已经跑着本工具（用页面特征判断，避免把别人的服务当自己的） */
 async function looksLikeOurApp(port) {
   try {
@@ -74,7 +94,7 @@ async function pickPort() {
     if (await looksLikeOurApp(p)) {
       console.log(`  ℹ 检测到本工具已在 http://localhost:${p}/ 运行，直接打开浏览器（不再重复启动服务）。`)
       console.log('  ℹ 原因：同一时间只应运行一个本程序实例（多个实例会共用同一个临时解包目录，可能互相影响）。')
-      exec(`start http://localhost:${p}/`)
+      openInBrowser(`http://localhost:${p}/`)
       process.exit(0)
     }
   }
@@ -89,9 +109,11 @@ async function pickPort() {
   console.error(
     `\n启动失败：端口 ${PREFERRED_PORT}~${PREFERRED_PORT + 20} 都被占用了。\n` +
       `请关掉占用这些端口的程序后重试，或用环境变量指定别的端口，例如：\n` +
-      `    set TOTORO_PORT=4000 && totoro-heaven.exe\n`,
+      (process.platform === 'win32'
+        ? `    set TOTORO_PORT=4000 && totoro-heaven.exe\n`
+        : `    TOTORO_PORT=4000 ./totoro-heaven\n`),
   )
-  exec('pause')
+  pauseIfWindows()
   process.exit(1)
 }
 
@@ -227,7 +249,7 @@ function openBrowserWhenReady() {
       .then((r) => {
         if (r.ok) {
           clearInterval(probe)
-          exec(`start http://localhost:${PORT}/`)
+          openInBrowser(`http://localhost:${PORT}/`)
         }
       })
       .catch(() => {
@@ -238,7 +260,7 @@ function openBrowserWhenReady() {
 
 async function main() {
   if (!isSea()) {
-    console.error('此 EXE 须以打包后的 SEA 单文件运行（直接双击即可）。')
+    console.error('此程序须以打包后的 SEA 单文件运行（Windows 双击 exe；Linux/macOS 直接运行可执行文件）。')
     process.exit(1)
   }
   // ① 先定端口（可能顺延；若已有本工具在跑就直接打开浏览器并退出）
@@ -263,6 +285,6 @@ async function main() {
 
 main().catch((e) => {
   console.error('启动失败:', e)
-  exec('pause')
+  pauseIfWindows()
   process.exit(1)
 })

@@ -140,11 +140,43 @@ function writeScannerLog(code: number | null, output: string): string {
 }
 
 /**
+ * 非 Windows 平台下「一键获取 token」的统一说明（`start` 端点与 runner 共用同一句，避免两处文案漂移）。
+ * 口径：只说“当前平台不支持 + 可替代路线”，不假装扫描器还能工作。
+ */
+export const TOKEN_SCAN_UNSUPPORTED_MESSAGE =
+  '「一键获取 token」目前只支持 Windows（需要只读扫描 PC 微信的 WeChatAppEx.exe 进程内存）。' +
+  '当前平台请改用「抓包粘贴 token」：用 mitmproxy/Charles 抓一条 wxxcx.xtotoro.com 请求，' +
+  '把 Authorization: Bearer … 粘到输入框。'
+
+/**
  * 启动扫描器。**不等待**其完成（结果由扫描器 POST 回 `/api/local/token-import`）。
  * 若它异常退出且状态仍是 scanning，则把状态置为 error（避免前端一直转圈）。
  */
 export function launchTokenScanner(endpoint: string, nonce: string): void {
-  const ps = process.platform === 'win32' ? 'powershell.exe' : 'pwsh'
+  /**
+   * 🔒 平台闸门（2026-10-18，Linux 迁移）：内存扫描器是 **Win32 P/Invoke**
+   * （`kernel32.dll` 的 `OpenProcess` / `ReadProcessMemory` / `VirtualQueryEx`）
+   * 且只认 PC 微信小程序宿主 `WeChatAppEx.exe`。
+   *
+   * Linux/macOS 上**不要**尝试启动（即使装了 `pwsh` 也必然失败），否则用户会看到
+   * “扫描器未回传结果”这种像 bug 的文案。这里直接把状态推进到 `error` 并说明可替代路线，
+   * 让「一键获取 token」成为**可预期的不可用**，而不是把后端拖进一次无意义的子进程。
+   */
+  if (process.platform !== 'win32') {
+    const logPath = writeScannerLog(null, `unsupported platform: ${process.platform} (${process.arch})`)
+    logWarn('token-scan', '当前平台不支持内存扫描，已跳过', {
+      platform: process.platform,
+      arch: process.arch,
+      log: logPath,
+    })
+    const cur = getScan()
+    if (cur && cur.nonce === nonce && cur.phase === 'scanning') {
+      patchScan({ phase: 'error', message: TOKEN_SCAN_UNSUPPORTED_MESSAGE })
+    }
+    return
+  }
+
+  const ps = 'powershell.exe'
   const script = scriptPath()
   const chunks: Buffer[] = []
   let collected = 0
